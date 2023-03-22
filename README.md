@@ -1,5 +1,7 @@
 # TPD-Keys
-#### Created by TPD94
+#### Created by @TPD94, proxy function by Radziu
+
+## Based on [pywidevine](https://cdm-project.com/Decryption-Tools/pywidevine "pywidevine")
 
 How to use:
 1. Create `TPD-Keys` folder.
