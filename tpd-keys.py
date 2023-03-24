@@ -131,12 +131,13 @@ allowed_countries = [
 
 print("Welcome to TPD-Keys! \n")
 print("[Generic Services]")
-print("1.Generic without any headers")
-print("2.Generic with generic headers")
-print("3.Generic with headers from DRMHeaders.py")
-print("4.JSON Widevine challenge, headers from DRMHeaders.py")
+print("1. Generic without any headers")
+print("2. Generic with generic headers")
+print("3. Generic with headers from DRMHeaders.py")
+print("4. JSON Widevine challenge, headers from DRMHeaders.py \n")
 print("[Specific Services]")
-print("5.Canal+ Live TV \n")
+print("5. Canal+ Live TV")
+print("6. YouTube VOD \n")
 selection = int(input("Please choose a service: "))
 
 if selection == 1:
@@ -330,6 +331,41 @@ elif selection == 5:
         })
     licence.raise_for_status()
     cdm.parse_license(session_id, licence.json()["ServiceResponse"]["OutData"]["LicenseInfo"])
+    fkeys = ""
+    for key in cdm.get_keys(session_id):
+        if key.type != 'SIGNING':
+            fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    print("")
+    print(fkeys)
+    cdm.close(session_id)
+
+elif selection == 6:
+    print("")
+    print("YouTube")
+    # ipssh = input("PSSH: ")
+    ipssh = "AAAAQXBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAACEiGVlUX01FRElBOjZlMzI4ZWQxYjQ5YmYyMWZI49yVmwY="
+    ilicurl = input("License URL: ")
+    pssh = PSSH(ipssh)
+    device = Device.load(MyWVD)
+    cdm = Cdm.from_device(device)
+    session_id = cdm.open()
+    challenge = cdm.get_license_challenge(session_id, pssh)
+    country_code = input("Proxy? (2 letter country code or N for no): ")
+    json_data = DRMHeaders.json_data
+    json_data["licenseRequest"] = base64.b64encode(challenge).decode("utf-8")
+    if len(country_code) == 2 and country_code.upper() in allowed_countries:
+        proxy = init_proxy({"zone": country_code, "port": "peer"})
+        proxies = {
+            "http": proxy
+        }
+        print(f"Using proxy {proxies['http']}")
+        licence = requests.post(ilicurl, cookies=DRMHeaders.cookies, headers=DRMHeaders.headers, proxies=proxies, json=json_data)
+    else:
+        print("Proxy-less request.")
+        licence = requests.post(ilicurl, cookies=DRMHeaders.cookies, headers=DRMHeaders.headers, json=json_data)
+
+    licence.raise_for_status()
+    cdm.parse_license(session_id, licence.json()["license"].replace("-", "+").replace("_", "/"))
     fkeys = ""
     for key in cdm.get_keys(session_id):
         if key.type != 'SIGNING':
