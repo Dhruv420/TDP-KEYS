@@ -10,7 +10,7 @@ How to use:
 
 3. Install the requirements with `pip install -r requirements.txt`
 
-4. Crete a WVD with pywidevine; `pywidevine create-device -k "KEY_PATH" -c "BLOB_PATH" -t "ANDROID" -l 3 -o "OUTPUT_PATH"`
+4. Crete a WVD with pywidevine; `pywidevine create-device -k "/PATH/TO/device_private_key" -c "/PATH/TO/device_client_id_blob" -t "ANDROID" -l 3`
 
 5. Replace `MyWVD= "/PATH/TO/WVD.wvd"` with the path to your `.wvd` on line 15 of tpd-keys.py
 
