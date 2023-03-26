@@ -1,3 +1,4 @@
 pywidevine
 requests
 httpx
+pyyaml
