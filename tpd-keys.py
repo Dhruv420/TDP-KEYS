@@ -1,19 +1,22 @@
 import base64
+import time
 
 from pywidevine.cdm import Cdm
 from pywidevine.device import Device
 from pywidevine.pssh import PSSH
 from base64 import b64encode
-
+import re
 import requests
 import json
 import random
 import uuid
 import httpx
 import DRMHeaders
+from requests.utils import dict_from_cookiejar
+import http
+from os import urandom
 
 MyWVD = "/PATH/TO/WVD.wvd"
-
 
 class Settings:
     def __init__(self, userCountry: str = None, randomProxy: bool = False) -> None:
@@ -137,7 +140,8 @@ print("3. Generic with headers from DRMHeaders.py")
 print("4. JSON Widevine challenge, headers from DRMHeaders.py \n")
 print("[Specific Services]")
 print("5. Canal+ Live TV")
-print("6. YouTube VOD \n")
+print("6. YouTube VOD")
+print("7. VDOCipher\n")
 selection = int(input("Please choose a service: "))
 
 if selection == 1:
@@ -374,5 +378,81 @@ elif selection == 6:
     print(fkeys)
     cdm.close(session_id)
 
+elif selection == 7:
+
+    url = input("\nEnter the URL: ")
+
+    headers = {
+        'accept': '*/*',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
+        ## Comment this line out if using for anything other than https://www.vdocipher.com/blog/2014/12/add-text-to-videos-with-watermark/
+        'Origin': f"https://{urandom(8).hex()}.com",
+    }
+
+    response = requests.get(url, cookies=DRMHeaders.cookies, headers=headers)
+
+    try:
+        otp_match = re.findall(r"otp: '(.*)',", response.text)[0]
+        playbackinfo_match = re.findall(r"playbackInfo: '(.*)',", response.text)[0]
+    except IndexError:
+        try:
+            otp_match = re.findall(r"otp=(.*)&", response.text)[0]
+            playbackinfo_match = re.findall(r"playbackInfo=(.*)", response.text)[0]
+        except IndexError:
+            print("\nAn error occured while getting otp/playback")
+            exit()
+
+    video_id = json.loads(base64.b64decode(playbackinfo_match).decode())["videoId"]
+
+    response = requests.get(f'https://dev.vdocipher.com/api/meta/{video_id}', headers=headers)
+
+    try:
+        lic_url = response.json()["dash"]["licenseServers"]["com.widevine.alpha"].rsplit(":", 1)[0]
+        mpd = response.json()["dash"]["manifest"]
+    except KeyError:
+        print("\n An error occured while getting mpd/license url")
+
+    response = requests.get(mpd, headers=headers)
+
+    pssh = re.search(r"<cenc:pssh>(.*)</cenc:pssh>", response.text).group(1)
+    device = Device.load(MyWVD)
+    cdm = Cdm.from_device(device)
+    session_id = cdm.open()
+    challenge = cdm.get_license_challenge(session_id, PSSH(pssh))
+
+    token = {
+            "otp":otp_match,
+            "playbackInfo":playbackinfo_match,
+            "href":url,
+            "tech":"wv",
+            "licenseRequest":f"{base64.b64encode(challenge).decode()}"
+        }
+
+    json_data = {
+        'token': f'{base64.b64encode(json.dumps(token).encode("utf-8")).decode()}',
+    }
+
+    response = requests.post(lic_url, headers=headers, json=json_data)
+
+    try:
+        lic_b64 = response.json()["license"]
+    except KeyError:
+        print(f'An error occured while getting license: {response.json()["message"]}')
+        exit()
+
+    cdm.parse_license(session_id, lic_b64)
+    fkeys = ""
+
+    print(f"\nMPD Link:")
+    print(f"{mpd}\n")
+
+    for key in cdm.get_keys(session_id):
+        if key.type != 'SIGNING':
+            fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    print("")
+    print(fkeys)
+    cdm.close(session_id)
+
 else:
     print("Invalid selection")
+
