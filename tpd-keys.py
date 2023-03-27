@@ -1,5 +1,15 @@
 import base64
+import hmac
+import hashlib
+import sys
 import time
+
+from bs4 import BeautifulSoup
+
+if sys.version_info[0] >= 3:
+  from urllib.parse import urlparse
+else:
+  from urlparse import urlparse
 
 from pywidevine.cdm import Cdm
 from pywidevine.device import Device
@@ -137,6 +147,45 @@ def init_proxy(data):
     tunnels = engine.zgettunnels(session_key, userCountry)
 
     return engine.get_proxy(tunnels)
+    
+def calculate_signature(method, url, headers, payload, timestamp=None):
+    app_id = 'SKYSHOWTIME-ANDROID-v1'
+    signature_key = bytearray('jfj9qGg6aDHaBbFpH6wNEvN6cHuHtZVppHRvBgZs', 'utf-8')
+    sig_version = '1.0'
+
+    if not timestamp:
+      timestamp = int(time.time())
+
+    if url.startswith('http'):
+      parsed_url = urlparse(url)
+      path = parsed_url.path
+    else:
+      path = url
+
+    #print('path: {}'.format(path))
+
+    text_headers = ''
+    for key in sorted(headers.keys()):
+      if key.lower().startswith('x-skyott'):
+        text_headers += key + ': ' + headers[key] + '\n'
+    #print(text_headers)
+    headers_md5 = hashlib.md5(text_headers.encode()).hexdigest()
+    #print(headers_md5)
+
+    if sys.version_info[0] > 2 and isinstance(payload, str):
+      payload = payload.encode('utf-8')
+    payload_md5 = hashlib.md5(payload).hexdigest()
+
+    to_hash = ('{method}\n{path}\n{response_code}\n{app_id}\n{version}\n{headers_md5}\n'
+              '{timestamp}\n{payload_md5}\n').format(method=method, path=path,
+                response_code='', app_id=app_id, version=sig_version,
+                headers_md5=headers_md5, timestamp=timestamp, payload_md5=payload_md5)
+    #print(to_hash)
+
+    hashed = hmac.new(signature_key, to_hash.encode('utf8'), hashlib.sha1).digest()
+    signature = base64.b64encode(hashed).decode('utf8')
+
+    return 'SkyOTT client="{}",signature="{}",timestamp="{}",version="{}"'.format(app_id, signature, timestamp, sig_version)
 
 
 allowed_countries = [
@@ -154,7 +203,8 @@ print("4. JSON Widevine challenge, headers from DRMHeaders.py \n")
 print("[Specific Services]")
 print("5. Canal+ Live TV")
 print("6. YouTube VOD")
-print("7. VDOCipher\n")
+print("7. VDOCipher")
+print("8. SkyShowTime\n")
 selection = int(input("Please choose a service: "))
 
 if selection == 1:
@@ -472,6 +522,152 @@ elif selection == 7:
     print(fkeys)
     cdm.close(session_id)
 
+elif selection == 8:
+    print("")
+    print("SkyShowTime")
+    
+    token_url = 'https://ovp.skyshowtime.com/auth/tokens'
+    vod_url= 'https://ovp.skyshowtime.com/video/playouts/vod'
+    
+    cookies = DRMHeaders.cookies
+    region = cookies['activeTerritory']
+    
+    #Getting tokens
+    headers = {
+        'accept': 'application/vnd.tokens.v1+json',
+        'content-type': 'application/vnd.tokens.v1+json',
+    }
+   
+    post_data = {
+      "auth": {
+          "authScheme": 'MESSO',
+          "authIssuer": 'NOWTV',
+          "provider": 'SKYSHOWTIME',
+          "providerTerritory": region,
+          "proposition": 'SKYSHOWTIME',
+      },
+      "device": {
+         "type": 'MOBILE',
+         "platform": 'ANDROID',
+         "id": 'Z-sKxKApSe7c3dAMGAYtVU8NmWKDcWrCKobKpnVTLqc', #Value seems to be irrelavant
+         "drmDeviceId": 'UNKNOWN'
+      }
+    }
+    post_data = json.dumps(post_data)
+    headers['x-sky-signature'] = calculate_signature('POST', token_url, headers, post_data)
+    userToken = json.loads(requests.post(token_url, cookies=cookies, headers=headers, data=post_data).content)['userToken']
+    del headers
+    del post_data
+    
+    
+    #Getting license and manifest url
+    video_url = input("Enter SkyShowTime video url: ")
+    content_id = video_url.split("/")[6]
+    provider_variant_id = video_url.split("/")[7][:36]
+    
+    post_data = {
+      "providerVariantId": provider_variant_id,
+      "device": {
+        "capabilities": [
+          {
+            "transport": "DASH",
+            "protection": "NONE",
+            "vcodec": "H265",
+            "acodec": "AAC",
+            "container": "ISOBMFF"
+          },
+          {
+            "transport": "DASH",
+            "protection": "WIDEVINE",
+            "vcodec": "H265",
+            "acodec": "AAC",
+            "container": "ISOBMFF"
+          },
+          {
+            "transport": "DASH",
+            "protection": "NONE",
+            "vcodec": "H264",
+            "acodec": "AAC",
+            "container": "ISOBMFF"
+          },
+          {
+            "transport": "DASH",
+            "protection": "WIDEVINE",
+            "vcodec": "H264",
+            "acodec": "AAC",
+            "container": "ISOBMFF"
+          }
+        ],
+        "model": "SM-N986B",
+        "maxVideoFormat": "HD",
+        "hdcpEnabled": 'false',
+        "supportedColourSpaces": [
+          "SDR"
+        ]
+      },
+      "client": {
+        "thirdParties": [
+          "COMSCORE",
+          "CONVIVA",
+          "FREEWHEEL"
+        ]
+      },
+      "personaParentalControlRating": 9
+    }
+    post_data = json.dumps(post_data)
+    
+    headers = {
+        'accept': 'application/vnd.playvod.v1+json',
+        'content-type': 'application/vnd.playvod.v1+json',
+        'x-skyott-activeterritory': region,
+        'x-skyott-agent': 'skyshowtime.mobile.android',
+        'x-skyott-country': 'SI',
+        'x-skyott-device': 'MOBILE',
+        'x-skyott-platform': 'ANDROID',
+        'x-skyott-proposition': 'SKYSHOWTIME',
+        'x-skyott-provider': 'SKYSHOWTIME',
+        'x-skyott-territory': region,
+        'x-skyott-usertoken': userToken,
+    }
+    headers['x-sky-signature'] = calculate_signature('POST', vod_url, headers, post_data)
+
+    vod_request = json.loads(requests.post(vod_url, headers=headers, data=post_data).content)
+    
+    license_url = vod_request['protection']['licenceAcquisitionUrl']
+    manifest_url = vod_request['asset']['endpoints'][0]['url']
+    
+    #Getting pssh
+    
+    manifest = requests.get(manifest_url).content
+    pssh = PSSH(BeautifulSoup(manifest, 'html.parser').findAll('cenc:pssh')[1].text)
+    
+    
+    #CDM processing
+    
+    device = Device.load(MyWVD)
+    cdm = Cdm.from_device(device)
+    session_id = cdm.open()
+    challenge = cdm.get_license_challenge(session_id, pssh)
+    
+    headers = {
+        'Content-Type':'application/octet-stream',
+    }
+    
+    licence = requests.post(license_url, headers=headers, data=challenge)
+    licence.raise_for_status()
+    cdm.parse_license(session_id, licence.content)
+    
+    fkeys = ""
+
+    print(f"\nMPD Link:")
+    print(f"{manifest_url}\n")
+
+    for key in cdm.get_keys(session_id):
+        if key.type != 'SIGNING':
+            fkeys += key.kid.hex + ":" + key.key.hex()
+    cache_key(str(pssh), fkeys)
+    print(fkeys)
+    cdm.close(session_id)
+    
 else:
     print("Invalid selection")
-
