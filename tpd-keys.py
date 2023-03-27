@@ -11,12 +11,18 @@ import json
 import random
 import uuid
 import httpx
+import sqlite3
 import DRMHeaders
 from requests.utils import dict_from_cookiejar
 import http
 from os import urandom
 
 MyWVD = "/PATH/TO/WVD.wvd"
+
+dbconnection = sqlite3.connect("database.db")
+dbcursor = dbconnection.cursor()
+dbcursor.execute('CREATE TABLE IF NOT EXISTS "DATABASE" ( "pssh" TEXT, "keys" TEXT, PRIMARY KEY("pssh") )')
+dbconnection.close()
 
 class Settings:
     def __init__(self, userCountry: str = None, randomProxy: bool = False) -> None:
@@ -106,6 +112,13 @@ class Hola:
 
         return self.settings.userCountry
 
+def cache_key(cpssh: str, ckeys: str):
+    dbconnection = sqlite3.connect("database.db")
+    dbcursor = dbconnection.cursor()
+    dbcursor.execute("INSERT or REPLACE INTO database VALUES (?, ?)", (cpssh, ckeys))
+    dbconnection.commit()
+    dbconnection.close()
+
 
 def init_proxy(data):
     settings = Settings(
@@ -171,6 +184,7 @@ if selection == 1:
     for key in cdm.get_keys(session_id):
         if key.type != 'SIGNING':
             fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    cache_key(ipssh, fkeys)
     print("")
     print(fkeys)
     cdm.close(session_id)
@@ -207,6 +221,7 @@ elif selection == 2:
     for key in cdm.get_keys(session_id):
         if key.type != 'SIGNING':
             fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    cache_key(ipssh, fkeys)
     print("")
     print(fkeys)
     cdm.close(session_id)
@@ -238,6 +253,7 @@ elif selection == 3:
     for key in cdm.get_keys(session_id):
         if key.type != 'SIGNING':
             fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    cache_key(ipssh, fkeys)
     print("")
     print(fkeys)
     cdm.close(session_id)
@@ -283,6 +299,7 @@ elif selection == 4:
     for key in cdm.get_keys(session_id):
         if key.type != 'SIGNING':
             fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    cache_key(ipssh, fkeys)
     print("")
     print(fkeys)
     cdm.close(session_id)
@@ -339,6 +356,7 @@ elif selection == 5:
     for key in cdm.get_keys(session_id):
         if key.type != 'SIGNING':
             fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    cache_key(ipssh, fkeys)
     print("")
     print(fkeys)
     cdm.close(session_id)
@@ -346,7 +364,6 @@ elif selection == 5:
 elif selection == 6:
     print("")
     print("YouTube")
-    # ipssh = input("PSSH: ")
     ipssh = "AAAAQXBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAACEiGVlUX01FRElBOjZlMzI4ZWQxYjQ5YmYyMWZI49yVmwY="
     ilicurl = input("License URL: ")
     pssh = PSSH(ipssh)
@@ -374,6 +391,7 @@ elif selection == 6:
     for key in cdm.get_keys(session_id):
         if key.type != 'SIGNING':
             fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    cache_key(ipssh, fkeys)
     print("")
     print(fkeys)
     cdm.close(session_id)
@@ -449,6 +467,7 @@ elif selection == 7:
     for key in cdm.get_keys(session_id):
         if key.type != 'SIGNING':
             fkeys += key.kid.hex + ":" + key.key.hex() + "\n"
+    cache_key(pssh, fkeys)
     print("")
     print(fkeys)
     cdm.close(session_id)
