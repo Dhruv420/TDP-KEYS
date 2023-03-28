@@ -621,7 +621,7 @@ elif selection == 8:
         'content-type': 'application/vnd.playvod.v1+json',
         'x-skyott-activeterritory': region,
         'x-skyott-agent': 'skyshowtime.mobile.android',
-        'x-skyott-country': 'SI',
+        'x-skyott-country': region,
         'x-skyott-device': 'MOBILE',
         'x-skyott-platform': 'ANDROID',
         'x-skyott-proposition': 'SKYSHOWTIME',
