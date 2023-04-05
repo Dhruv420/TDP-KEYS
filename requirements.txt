@@ -2,3 +2,4 @@ pywidevine
 requests
 httpx
 pyyaml
+inquirer
